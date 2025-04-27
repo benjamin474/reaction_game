@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:math';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class GamePage extends StatefulWidget {
   final int difficulty;
+  final Function(int) onHighScoreUpdated;
 
-  const GamePage({super.key, required this.difficulty});
+  const GamePage({super.key, required this.difficulty, required this.onHighScoreUpdated,});
 
   @override
   _GamePageState createState() => _GamePageState();
@@ -20,13 +22,36 @@ class _GamePageState extends State<GamePage> {
   String _correctAnswer = "";
   Color _textColor = Colors.black;
   int _score = 0;
+  int _highScore = 0;
   Map<String, dynamic>? _currentElement;
 
   @override
   void initState() {
     super.initState();
+    _loadHighScore();
     _timeLeft = widget.difficulty;
     _startGame();
+  }
+
+  void _loadHighScore() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _highScore = prefs.getInt('highScore_${widget.difficulty}') ?? 0;
+    });
+  }
+
+  void _updateHighScore() async {
+    final prefs = await SharedPreferences.getInstance();
+    // Compare with persisted high score to decide update
+    final prevHigh = prefs.getInt('highScore_${widget.difficulty}') ?? 0;
+    if (_score > prevHigh) {
+      await prefs.setInt('highScore_${widget.difficulty}', _score);
+      setState(() {
+        _highScore = _score;
+      });
+      // Notify HomePage with new high score
+      widget.onHighScoreUpdated(_score);
+    }
   }
 
   void _startGame() {
@@ -149,7 +174,8 @@ class _GamePageState extends State<GamePage> {
     if (answer == _correctAnswer) {
       _timer.cancel(); // Stop the current timer
       setState(() {
-        _score++; // Increment score
+        _score++;
+        _highScore = max(_highScore, _score);
         _timeLeft = widget.difficulty; // Reset the timer
       });
       _startGame(); // Generate a new question and restart the timer
@@ -159,12 +185,13 @@ class _GamePageState extends State<GamePage> {
   }
 
   void _showGameOverDialog() {
+    _updateHighScore();
     showDialog(
       context: context,
       builder:
           (context) => AlertDialog(
-            title: const Text("遊戲結束"),
-            content: Text("您答錯了! 正確答案是 $_correctAnswer\n您累積了 $_score 分！"),
+            title: const Text("遊戲結束!"),
+            content: Text("答案是 $_correctAnswer\n您累積了 $_score 分！\n最高分: $_highScore"),
             actions: [
               TextButton(
                 onPressed: () {
@@ -225,7 +252,16 @@ class _GamePageState extends State<GamePage> {
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
+              // const SizedBox(height: 10),
+              Text(
+                "最高分記錄: $_highScore",
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              // const SizedBox(height: 10),
               Card(
                 color: Colors.white.withOpacity(0.8),
                 elevation: 8,
